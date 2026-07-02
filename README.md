@@ -57,19 +57,25 @@ like `tduid`/`awc`/`at_gd` alongside an affiliate `utm_medium`), with
 
 ## Load it in Chrome
 
-Chrome uses the same MV3 codebase; the only difference is the manifest (Chrome
-runs the background as a service worker, Firefox as an event page). Build the
-Chrome package and load it unpacked:
+No terminal needed — just download and click:
 
-1. Run `python3 build.py` — this writes `bonusradar-chrome-<version>.zip` (and
-   the Firefox `.xpi`) to the parent directory. Unzip it somewhere.
-2. Go to `chrome://extensions`, toggle **Developer mode** on (top-right).
-3. **Load unpacked** → pick the unzipped folder.
-4. Visit `https://www.adlibris.com/sv` — the widget should appear as a small
-   badge top-right.
+1. Go to the [latest release](https://github.com/Godhet/bonusradar/releases/latest)
+   and download **`bonusradar-chrome-<version>.zip`**.
+2. Unzip it: on Windows right-click the file → **Extract All**; on Mac
+   double-click it. You'll get a folder called `bonusradar-chrome-<version>`.
+3. Open Chrome, type `chrome://extensions` in the address bar, and press Enter.
+4. Turn on **Developer mode** (switch in the top-right corner).
+5. Click **Load unpacked** and choose the folder from step 2.
+6. Done — visit `https://www.adlibris.com/sv` and a small badge appears
+   top-right when you're on a partner shop.
 
-> Loading unpacked keeps it installed across restarts (unlike Firefox temporary
-> add-ons). To distribute it, submit the same `.zip` to the Chrome Web Store.
+> Keep the unzipped folder where it is (don't delete it) — Chrome loads the
+> extension from that folder. Chrome may show a "Disable developer mode
+> extensions" pop-up now and then; just click **Keep**. The extension stays
+> installed across restarts.
+
+*(Developers: run `python3 build.py` to rebuild the `.zip`/`.xpi` from source —
+see [Building](#building).)*
 
 ## iOS Safari (userscript)
 
