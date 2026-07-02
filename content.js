@@ -3,10 +3,6 @@
 // Re-runs on SPA URL changes via popstate + pushState monkey-patch.
 
 const PORTAL_HOME = "https://onlineshopping.flysas.com/";
-// How long a detected click-through counts as "tracked" for. Affiliate
-// attribution windows are time-limited, not permanent — without this, a
-// single genuine (or falsely detected) hit would mark a host tracked forever.
-const TRACKED_TTL_MS = 24 * 60 * 60 * 1000;
 
 // ---- Storage proxy helpers (content scripts cannot call storage.*) ----
 
@@ -21,7 +17,6 @@ function setStore(data) {
 // ---- Widget rendering ----
 
 let chipEl = null;
-let activeHost = null; // remember which host the chip belongs to
 
 // Check if we arrived via the EuroBonus portal (loyaltykey redirect).
 // Referrer is unreliable — it's dropped the moment you click a link on the
@@ -76,13 +71,15 @@ async function checkAndRender() {
   const currentHost = normalizeHost(location.hostname);
   if (!currentHost) return;
 
-  // If we're still on the same partner page, no need to re-check
-  if (currentHost === activeHost && chipEl) return;
-  // Navigated away from the partner – tear down existing chip
-  if (activeHost !== currentHost && chipEl) {
+  // Always rebuild from scratch on every navigation. The tracked/not-tracked
+  // status can genuinely differ between two pages on the same host (e.g. the
+  // actual tracked landing page vs. hitting "back" to a plain URL with no
+  // tracking params) — trusting a stale chip across navigation is exactly
+  // what caused the widget to keep claiming "tracking active" long after
+  // there was any evidence for it.
+  if (chipEl) {
     chipEl.remove();
     chipEl = null;
-    activeHost = null;
   }
 
   const store = await getStore(["index", "hidden", "adblockActive"]);
@@ -93,22 +90,14 @@ async function checkAndRender() {
 
   const country = await getActiveCountry();
   const hit = matchPartner(location.hostname, location.pathname, store.index, country);
-  if (!hit) {
-    activeHost = currentHost;
-    return;
-  }
+  if (!hit) return;
 
-  // Track whether we came via portal this session. Persist in storage so it
-  // survives within-site navigation (both the referrer and the URL params
-  // disappear once you click around the partner site after landing).
-  let isTracked = cameFromPortal() || cameViaAffiliateLink();
-  if (isTracked) {
-    await setStore({ [`tracked:${host}`]: Date.now() });
-  } else {
-    const trackedStore = await getStore([`tracked:${host}`]);
-    const trackedAt = trackedStore && trackedStore[`tracked:${host}`];
-    isTracked = typeof trackedAt === "number" && Date.now() - trackedAt < TRACKED_TTL_MS;
-  }
+  // Only trust what's verifiable on this exact page load: a referrer from
+  // the portal, or affiliate tracking params on the URL. No persistence
+  // across page loads — we have no way to confirm an affiliate cookie is
+  // actually still set, so claiming "still tracked" later would be a guess,
+  // not a fact.
+  const isTracked = cameFromPortal() || cameViaAffiliateLink();
 
   // Best-effort enrichment: points + the tracked clickthrough URL.
   let detail = null;
@@ -202,7 +191,6 @@ async function checkAndRender() {
   document.documentElement.appendChild(chip);
 
   chipEl = chip;
-  activeHost = currentHost;
 }
 
 // ---- SPA Navigation support ----
@@ -232,11 +220,6 @@ history.replaceState = function () {
 // React immediately when the popup changes the active country.
 browser.runtime.onMessage.addListener((msg) => {
   if (msg && msg.type === "eb-country-changed") {
-    if (chipEl) {
-      chipEl.remove();
-      chipEl = null;
-    }
-    activeHost = null;
     checkAndRender();
   }
 });
