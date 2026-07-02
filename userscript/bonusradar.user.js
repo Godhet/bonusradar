@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bonusradar
 // @namespace    https://github.com/Godhet/bonusradar
-// @version      0.3.2
+// @version      0.3.4
 // @description  Flags SAS EuroBonus partner shops in Sweden, Norway and Denmark as you browse, with a link to shop via the portal so you actually earn points.
 // @author       Marcus Palmqvist
 // @match        http://*/*
@@ -161,7 +161,6 @@
   const PORTAL_HOME = "https://onlineshopping.flysas.com/";
   const INDEX_TTL_MS = 24 * 60 * 60 * 1000;
   const DETAIL_TTL_MS = 24 * 60 * 60 * 1000;
-  const TRACKED_TTL_MS = 24 * 60 * 60 * 1000;
   const ADBLOCK_TTL_MS = 24 * 60 * 60 * 1000;
   const BAIT_TIMEOUT_MS = 4000;
   // Same networks the Firefox extension bait-checks — see background.js for why.
@@ -337,17 +336,19 @@
   // ---- Widget rendering: full-width top banner ----
 
   let chipEl = null;
-  let activeHost = null;
 
   async function checkAndRender() {
     const currentHost = normalizeHost(location.hostname);
     if (!currentHost) return;
 
-    if (currentHost === activeHost && chipEl) return;
-    if (activeHost !== currentHost && chipEl) {
+    // Always rebuild from scratch on every navigation. The tracked/not-tracked
+    // status can genuinely differ between two pages on the same host (e.g. the
+    // actual tracked landing page vs. hitting "back" to a plain URL with no
+    // tracking params) — trusting a stale chip across navigation is exactly
+    // what made the widget keep claiming "tracking active" with no evidence.
+    if (chipEl) {
       chipEl.remove();
       chipEl = null;
-      activeHost = null;
     }
 
     const index = await ensureIndex();
@@ -359,27 +360,13 @@
 
     const country = await getActiveCountry();
     const hit = matchPartner(location.hostname, location.pathname, index, country);
-    if (!hit) {
-      activeHost = currentHost;
-      return;
-    }
+    if (!hit) return;
 
-    // cameNow distinguishes "just clicked through" from "revisiting within
-    // the carried-over tracked window" so the banner can say which one this
-    // is, rather than implying you just clicked through every time.
-    const trackedKey = `tracked:${host}`;
-    const cameNow = cameFromPortal() || cameViaAffiliateLink();
-    let isTracked = cameNow;
-    let trackedUntil = null;
-    if (isTracked) {
-      const now = Date.now();
-      await storeSet(trackedKey, now);
-      trackedUntil = now + TRACKED_TTL_MS;
-    } else {
-      const trackedAt = await storeGet(trackedKey, null);
-      isTracked = typeof trackedAt === "number" && Date.now() - trackedAt < TRACKED_TTL_MS;
-      if (isTracked) trackedUntil = trackedAt + TRACKED_TTL_MS;
-    }
+    // Only trust what's verifiable on this exact page load: a referrer from
+    // the portal, or affiliate tracking params on the URL. No persistence
+    // across page loads — we have no way to confirm an affiliate cookie is
+    // actually still set, so claiming "still tracked" later would be a guess.
+    const isTracked = cameFromPortal() || cameViaAffiliateLink();
 
     const detail = await getDetail(hit.id, hit.country);
     const adblockActive = isTracked ? false : await ensureAdblockStatus();
@@ -408,10 +395,7 @@
 
     if (isTracked) {
       const statusEl = document.createElement("span");
-      const label = cameNow
-        ? "EuroBonus tracking active!"
-        : `EuroBonus tracked (until ${new Date(trackedUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})`;
-      statusEl.textContent = `✅ ${name}${points ? ` · ${points}` : ""} — ${label}`;
+      statusEl.textContent = `✅ ${name}${points ? ` · ${points}` : ""} — EuroBonus tracking active!`;
       Object.assign(statusEl.style, { color: "#fff", fontWeight: "600" });
       chip.append(statusEl);
     } else {
@@ -469,7 +453,6 @@
 
     document.documentElement.appendChild(chip);
     chipEl = chip;
-    activeHost = currentHost;
   }
 
   // ---- SPA navigation support (identical to content.js) ----
