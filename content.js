@@ -143,11 +143,11 @@ async function checkAndRender() {
   const chip = document.createElement("div");
   chip.id = "bonusradar-chip";
   Object.assign(chip.style, {
-    position: "fixed", top: "12px", right: "12px", zIndex: "2147483647",
-    display: "flex", alignItems: "center", gap: "8px",
-    background: bgColor, color: "#fff", padding: "8px 10px 8px 12px",
-    borderRadius: "10px", font: "13px/1.3 system-ui, -apple-system, sans-serif",
-    boxShadow: "0 4px 16px rgba(0,0,0,.35)", border: `1px solid ${borderColor}`,
+    position: "fixed", top: "0", left: "0", right: "0", zIndex: "2147483647",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    gap: "8px", background: bgColor, color: "#fff", padding: "10px 44px",
+    font: "14px/1.4 system-ui, -apple-system, sans-serif", textAlign: "center",
+    boxShadow: "0 2px 12px rgba(0,0,0,.3)", borderBottom: `1px solid ${borderColor}`,
   });
 
   if (isTracked) {
@@ -185,8 +185,9 @@ async function checkAndRender() {
   close.textContent = "✕";
   close.title = "Hide on this site";
   Object.assign(close.style, {
+    position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)",
     background: "transparent", color: isTracked ? "#a3e4b6" : "#aab4ee", border: "0",
-    cursor: "pointer", font: "13px system-ui", padding: "0 2px", lineHeight: "1",
+    cursor: "pointer", font: "16px system-ui", padding: "4px", lineHeight: "1",
   });
   close.addEventListener("click", async () => {
     const hiddenStore = await getStore(["hidden"]);

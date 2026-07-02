@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Bonusradar
 // @namespace    https://github.com/Godhet/bonusradar
-// @version      0.3.0
+// @version      0.3.1
 // @description  Flags SAS EuroBonus partner shops in Sweden, Norway and Denmark as you browse, with a link to shop via the portal so you actually earn points.
 // @author       Marcus Palmqvist
-// @match        *://*/*
-// @require      https://raw.githubusercontent.com/Godhet/bonusradar/main/lib/match.js
+// @match        http://*/*
+// @match        https://*/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
@@ -18,9 +18,12 @@
 
 // Userscript build for browsers without extension support (e.g. iOS Safari via
 // the "Userscripts" app). Same matching logic as the Firefox extension
-// (loaded from lib/match.js via @require) but everything runs inline on each
-// page load — there's no background page here, so the shop-list refresh and
-// ad-blocker check happen opportunistically instead of on a daily timer.
+// (lib/match.js), but copied in directly rather than loaded via @require —
+// some userscript managers' sandboxed contexts don't reliably fetch remote
+// @require scripts, which fails silently (no console visible on iOS) and
+// looks exactly like "the script just does nothing". Keeping this
+// self-contained removes that whole failure class. If you change the
+// matching logic in lib/match.js, mirror the change here too.
 //
 // GM_getValue/GM_setValue are awaited everywhere: some managers (Tampermonkey,
 // Violentmonkey) return values synchronously, others (Userscripts on iOS)
@@ -29,6 +32,104 @@
 
 (function () {
   "use strict";
+
+  // ---- Matching logic (mirrors lib/match.js) ----
+
+  const COUNTRY_LOCALE = { SE: "sv-SE", NO: "nb-NO", DK: "da-DK" };
+
+  function normalizeHost(input) {
+    if (!input) return null;
+    try {
+      const s = String(input);
+      const url = new URL(s.startsWith("http") ? s : "https://" + s);
+      return url.hostname.replace(/^www\./, "").toLowerCase();
+    } catch {
+      return String(input).replace(/^www\./, "").toLowerCase() || null;
+    }
+  }
+
+  function parseShopKey(key) {
+    const trimmed = String(key).trim().toLowerCase()
+      .replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    if (!trimmed) return null;
+    const slash = trimmed.indexOf("/");
+    const rawHost = slash === -1 ? trimmed : trimmed.slice(0, slash);
+    const path = slash === -1 ? "" : trimmed.slice(slash);
+    const domain = rawHost.replace(/^www\./, "");
+    return domain ? { domain, path } : null;
+  }
+
+  function buildIndex(rawMap, country) {
+    const index = {};
+    for (const key in rawMap) {
+      const parsed = parseShopKey(key);
+      if (!parsed) continue;
+      (index[parsed.domain] = index[parsed.domain] || []).push({
+        id: rawMap[key],
+        path: parsed.path,
+        country: country || null,
+      });
+    }
+    return index;
+  }
+
+  function mergeIndices(...indices) {
+    const merged = {};
+    for (const idx of indices) {
+      if (!idx) continue;
+      for (const domain in idx) {
+        merged[domain] = (merged[domain] || []).concat(idx[domain]);
+      }
+    }
+    return merged;
+  }
+
+  function matchPartner(host, path, index, preferredCountry) {
+    const h = normalizeHost(host);
+    if (!h || !index) return null;
+
+    const candidates = [h];
+    const parts = h.split(".");
+    for (let i = 1; i < parts.length - 1; i++) {
+      candidates.push(parts.slice(i).join("."));
+    }
+
+    const p = (path || "/").toLowerCase();
+
+    const pickFrom = (entries) => {
+      if (!entries || !entries.length) return null;
+      const scoped = entries.filter((e) => e.path && p.startsWith(e.path));
+      const pool = scoped.length ? scoped : entries.filter((e) => !e.path);
+      if (!pool.length) return null;
+      if (preferredCountry) {
+        const preferred = pool.find((e) => e.country === preferredCountry);
+        if (preferred) return preferred;
+      }
+      return pool[0];
+    };
+
+    for (const c of candidates) {
+      const hit = pickFrom(index[c]);
+      if (hit) return { id: hit.id, domain: c, country: hit.country };
+    }
+    return null;
+  }
+
+  function detectCountry() {
+    try {
+      const lang = (
+        (typeof navigator !== "undefined" &&
+          (navigator.language || (navigator.languages && navigator.languages[0]))) ||
+        ""
+      ).toLowerCase();
+      if (lang.startsWith("da")) return "DK";
+      if (lang.startsWith("nb") || lang.startsWith("nn") || lang.startsWith("no")) return "NO";
+      if (lang.startsWith("sv")) return "SE";
+    } catch {}
+    return "SE";
+  }
+
+  // ---- Config ----
 
   const API_BASE = "https://onlineshopping.loyaltykey.com/api/browser-extension/sas";
   const PORTAL_HOME = "https://onlineshopping.flysas.com/";
@@ -199,7 +300,7 @@
     });
   }
 
-  // ---- Widget rendering (same visuals as the extension's content.js) ----
+  // ---- Widget rendering: full-width top banner ----
 
   let chipEl = null;
   let activeHost = null;
@@ -256,11 +357,11 @@
     const chip = document.createElement("div");
     chip.id = "bonusradar-chip";
     Object.assign(chip.style, {
-      position: "fixed", top: "12px", right: "12px", zIndex: "2147483647",
-      display: "flex", alignItems: "center", gap: "8px",
-      background: bgColor, color: "#fff", padding: "8px 10px 8px 12px",
-      borderRadius: "10px", font: "13px/1.3 system-ui, -apple-system, sans-serif",
-      boxShadow: "0 4px 16px rgba(0,0,0,.35)", border: `1px solid ${borderColor}`,
+      position: "fixed", top: "0", left: "0", right: "0", zIndex: "2147483647",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      gap: "8px", background: bgColor, color: "#fff", padding: "10px 44px",
+      font: "14px/1.4 system-ui, -apple-system, sans-serif", textAlign: "center",
+      boxShadow: "0 2px 12px rgba(0,0,0,.3)", borderBottom: `1px solid ${borderColor}`,
     });
 
     if (isTracked) {
@@ -293,8 +394,9 @@
     close.textContent = "✕";
     close.title = "Hide on this site";
     Object.assign(close.style, {
+      position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)",
       background: "transparent", color: isTracked ? "#a3e4b6" : "#aab4ee", border: "0",
-      cursor: "pointer", font: "13px system-ui", padding: "0 2px", lineHeight: "1",
+      cursor: "pointer", font: "16px system-ui", padding: "4px", lineHeight: "1",
     });
     close.addEventListener("click", async () => {
       const hiddenList = (await GM_getValue("hidden", [])) || [];
