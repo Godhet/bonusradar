@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         Bonusradar
 // @namespace    https://github.com/Godhet/bonusradar
-// @version      0.3.1
+// @version      0.3.2
 // @description  Flags SAS EuroBonus partner shops in Sweden, Norway and Denmark as you browse, with a link to shop via the portal so you actually earn points.
 // @author       Marcus Palmqvist
 // @match        http://*/*
 // @match        https://*/*
+// @grant        GM.setValue
+// @grant        GM.getValue
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
@@ -25,10 +27,17 @@
 // self-contained removes that whole failure class. If you change the
 // matching logic in lib/match.js, mirror the change here too.
 //
-// GM_getValue/GM_setValue are awaited everywhere: some managers (Tampermonkey,
-// Violentmonkey) return values synchronously, others (Userscripts on iOS)
-// return a Promise. Awaiting a plain value just resolves immediately, so this
-// works either way.
+// Storage: the iOS "Userscripts" app only implements the modern GM.setValue/
+// GM.getValue (dot-namespace, Promise-based) — it does NOT provide the
+// legacy GM_setValue/GM_getValue globals some desktop managers use. Calling
+// an ungranted global throws a ReferenceError that silently kills the whole
+// script on iOS (no console there to see it). storeGet/storeSet below try
+// GM.* first and fall back to GM_* for managers that only offer the old
+// names, same trick BonusVarsler's own build uses.
+//
+// GM_registerMenuCommand isn't in the Userscripts app's supported API at
+// all, so the country picker lives in the page (a small control on the
+// banner) instead of a manager menu — that works everywhere.
 
 (function () {
   "use strict";
@@ -129,6 +138,23 @@
     return "SE";
   }
 
+  // ---- Storage (works across GM.* and GM_* dialects — see header note) ----
+
+  async function storeGet(key, def) {
+    try {
+      if (typeof GM !== "undefined" && GM.getValue) return await GM.getValue(key, def);
+      if (typeof GM_getValue === "function") return await GM_getValue(key, def);
+    } catch (_) {}
+    return def;
+  }
+
+  async function storeSet(key, value) {
+    try {
+      if (typeof GM !== "undefined" && GM.setValue) return await GM.setValue(key, value);
+      if (typeof GM_setValue === "function") return await GM_setValue(key, value);
+    } catch (_) {}
+  }
+
   // ---- Config ----
 
   const API_BASE = "https://onlineshopping.loyaltykey.com/api/browser-extension/sas";
@@ -162,8 +188,8 @@
   }
 
   async function ensureIndex() {
-    const fetchedAt = (await GM_getValue("fetchedAt", 0)) || 0;
-    let index = await GM_getValue("index", null);
+    const fetchedAt = (await storeGet("fetchedAt", 0)) || 0;
+    let index = await storeGet("index", null);
     if (index && Date.now() - fetchedAt < INDEX_TTL_MS) return index;
 
     const counts = {};
@@ -178,16 +204,16 @@
     if (perCountryIndex.length === 0) return index; // keep stale data over nothing
 
     index = mergeIndices(...perCountryIndex);
-    await GM_setValue("index", index);
-    await GM_setValue("counts", counts);
-    await GM_setValue("fetchedAt", Date.now());
+    await storeSet("index", index);
+    await storeSet("counts", counts);
+    await storeSet("fetchedAt", Date.now());
     return index;
   }
 
   async function getDetail(id, country) {
     const locale = COUNTRY_LOCALE[country] || COUNTRY_LOCALE.SE;
     const key = `detail:${country}:${id}`;
-    const cached = await GM_getValue(key, null);
+    const cached = await storeGet(key, null);
     if (cached && Date.now() - cached.at < DETAIL_TTL_MS) return cached.v;
 
     try {
@@ -204,7 +230,7 @@
         commissionType: d.commission_type,
         url: d.url,
       };
-      await GM_setValue(key, { at: Date.now(), v });
+      await storeSet(key, { at: Date.now(), v });
       return v;
     } catch (_) {
       return null;
@@ -232,14 +258,14 @@
   }
 
   async function ensureAdblockStatus() {
-    const checkedAt = (await GM_getValue("adblockCheckedAt", 0)) || 0;
+    const checkedAt = (await storeGet("adblockCheckedAt", 0)) || 0;
     if (Date.now() - checkedAt < ADBLOCK_TTL_MS) {
-      return await GM_getValue("adblockActive", false);
+      return await storeGet("adblockActive", false);
     }
     const results = await Promise.all(AD_NETWORK_HOSTS.map(probeHost));
     const adblockActive = results.some(Boolean);
-    await GM_setValue("adblockActive", adblockActive);
-    await GM_setValue("adblockCheckedAt", Date.now());
+    await storeSet("adblockActive", adblockActive);
+    await storeSet("adblockCheckedAt", Date.now());
     return adblockActive;
   }
 
@@ -271,33 +297,41 @@
     } catch { return false; }
   }
 
-  // ---- Country selection (popup dropdown -> menu commands) ----
+  // ---- Country selection ----
+  // Primary control is a small tappable label on the banner itself (works in
+  // every userscript manager, including this app which has no menu-command
+  // API at all). GM_registerMenuCommand is also registered opportunistically
+  // for desktop managers that support it, as a bonus shortcut.
 
   async function getActiveCountry() {
-    const override = await GM_getValue("country", "");
+    const override = await storeGet("country", "");
     return override || detectCountry();
   }
 
-  async function registerCountryMenu() {
-    const current = (await GM_getValue("country", "")) || "";
-    const label = current
-      ? `Bonusradar: country = ${COUNTRY_NAMES[current]} (tap to change)`
-      : `Bonusradar: country = Auto (${COUNTRY_NAMES[detectCountry()]}) (tap to change)`;
+  async function promptForCountry() {
+    const current = (await storeGet("country", "")) || "";
+    const input = window.prompt(
+      "Bonusradar home country.\nType SE, NO or DK — or leave blank for auto-detect.",
+      current
+    );
+    if (input === null) return;
+    const normalized = input.trim().toUpperCase();
+    if (normalized && !COUNTRY_LOCALE[normalized]) {
+      window.alert(`"${input}" isn't a supported country. Use SE, NO, DK, or leave blank.`);
+      return;
+    }
+    await storeSet("country", normalized);
+    window.location.reload();
+  }
 
-    GM_registerMenuCommand(label, async () => {
-      const input = window.prompt(
-        "Bonusradar home country.\nType SE, NO or DK — or leave blank for auto-detect.",
-        current
-      );
-      if (input === null) return;
-      const normalized = input.trim().toUpperCase();
-      if (normalized && !COUNTRY_LOCALE[normalized]) {
-        window.alert(`"${input}" isn't a supported country. Use SE, NO, DK, or leave blank.`);
-        return;
+  function registerCountryMenu() {
+    // Not supported by every manager (notably: not by the iOS Userscripts
+    // app) — best-effort only, never the sole way to change country.
+    try {
+      if (typeof GM_registerMenuCommand === "function") {
+        GM_registerMenuCommand("Bonusradar: change country", promptForCountry);
       }
-      await GM_setValue("country", normalized);
-      window.location.reload();
-    });
+    } catch (_) {}
   }
 
   // ---- Widget rendering: full-width top banner ----
@@ -320,7 +354,7 @@
     if (!index) return;
 
     const host = normalizeHost(location.hostname);
-    const hidden = (await GM_getValue("hidden", [])) || [];
+    const hidden = (await storeGet("hidden", [])) || [];
     if (host && hidden.includes(host)) return;
 
     const country = await getActiveCountry();
@@ -333,9 +367,9 @@
     const trackedKey = `tracked:${host}`;
     let isTracked = cameFromPortal() || cameViaAffiliateLink();
     if (isTracked) {
-      await GM_setValue(trackedKey, Date.now());
+      await storeSet(trackedKey, Date.now());
     } else {
-      const trackedAt = await GM_getValue(trackedKey, null);
+      const trackedAt = await storeGet(trackedKey, null);
       isTracked = typeof trackedAt === "number" && Date.now() - trackedAt < TRACKED_TTL_MS;
     }
 
@@ -390,6 +424,20 @@
       }
     }
 
+    // Country control lives on the banner itself since GM_registerMenuCommand
+    // isn't reliably available (notably: not in the iOS Userscripts app).
+    const countryBtn = document.createElement("button");
+    countryBtn.textContent = country;
+    countryBtn.title = "Change Bonusradar home country";
+    Object.assign(countryBtn.style, {
+      position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)",
+      background: "rgba(255,255,255,.18)", color: "#fff", border: "0",
+      borderRadius: "5px", cursor: "pointer", font: "11px system-ui",
+      padding: "3px 6px", lineHeight: "1",
+    });
+    countryBtn.addEventListener("click", promptForCountry);
+    chip.append(countryBtn);
+
     const close = document.createElement("button");
     close.textContent = "✕";
     close.title = "Hide on this site";
@@ -399,9 +447,9 @@
       cursor: "pointer", font: "16px system-ui", padding: "4px", lineHeight: "1",
     });
     close.addEventListener("click", async () => {
-      const hiddenList = (await GM_getValue("hidden", [])) || [];
+      const hiddenList = (await storeGet("hidden", [])) || [];
       if (!hiddenList.includes(host)) {
-        await GM_setValue("hidden", [...hiddenList, host]);
+        await storeSet("hidden", [...hiddenList, host]);
       }
       chip.remove();
       chipEl = null;

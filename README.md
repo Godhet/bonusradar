@@ -70,8 +70,8 @@ a userscript manager.
 
 The userscript has no background page, so the shop list refreshes
 opportunistically (once a day, on whichever page you happen to be on) rather
-than on a fixed timer. To change your home country, tap the Userscripts
-extension icon and use the "Bonusradar: country = …" menu command.
+than on a fixed timer. To change your home country, tap the small country
+code shown on the left side of the banner.
 
 ## Privacy
 
