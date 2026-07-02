@@ -52,6 +52,25 @@ like `tduid`/`awc`/`at_gd` alongside an affiliate `utm_medium`), with
 > signed `.xpi`, or set `xpinstall.signatures.required` to `false` on Firefox
 > Developer/Nightly/ESR.
 
+## iOS Safari (userscript)
+
+Safari on iOS doesn't support browser extensions like Firefox does, but there's
+a userscript build with the same matching logic at
+[`userscript/bonusradar.user.js`](userscript/bonusradar.user.js) that runs via
+a userscript manager.
+
+1. Install [Userscripts](https://apps.apple.com/app/userscripts/id1463298887)
+   (free) from the App Store, then enable it under
+   Settings → Safari → Extensions.
+2. Open this link in Safari and tap **Install** when Userscripts prompts you:
+   https://raw.githubusercontent.com/Godhet/bonusradar/main/userscript/bonusradar.user.js
+3. Visit a partner site — the widget should appear top-right.
+
+The userscript has no background page, so the shop list refreshes
+opportunistically (once a day, on whichever page you happen to be on) rather
+than on a fixed timer. To change your home country, tap the Userscripts
+extension icon and use the "Bonusradar: country = …" menu command.
+
 ## Privacy
 
 Matching happens locally against the cached index. The extension talks to
