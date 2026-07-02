@@ -364,13 +364,21 @@
       return;
     }
 
+    // cameNow distinguishes "just clicked through" from "revisiting within
+    // the carried-over tracked window" so the banner can say which one this
+    // is, rather than implying you just clicked through every time.
     const trackedKey = `tracked:${host}`;
-    let isTracked = cameFromPortal() || cameViaAffiliateLink();
+    const cameNow = cameFromPortal() || cameViaAffiliateLink();
+    let isTracked = cameNow;
+    let trackedUntil = null;
     if (isTracked) {
-      await storeSet(trackedKey, Date.now());
+      const now = Date.now();
+      await storeSet(trackedKey, now);
+      trackedUntil = now + TRACKED_TTL_MS;
     } else {
       const trackedAt = await storeGet(trackedKey, null);
       isTracked = typeof trackedAt === "number" && Date.now() - trackedAt < TRACKED_TTL_MS;
+      if (isTracked) trackedUntil = trackedAt + TRACKED_TTL_MS;
     }
 
     const detail = await getDetail(hit.id, hit.country);
@@ -400,7 +408,10 @@
 
     if (isTracked) {
       const statusEl = document.createElement("span");
-      statusEl.textContent = `✅ ${name}${points ? ` · ${points}` : ""} — EuroBonus tracking active!`;
+      const label = cameNow
+        ? "EuroBonus tracking active!"
+        : `EuroBonus tracked (until ${new Date(trackedUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})`;
+      statusEl.textContent = `✅ ${name}${points ? ` · ${points}` : ""} — ${label}`;
       Object.assign(statusEl.style, { color: "#fff", fontWeight: "600" });
       chip.append(statusEl);
     } else {

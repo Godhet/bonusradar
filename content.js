@@ -101,13 +101,21 @@ async function checkAndRender() {
   // Track whether we came via portal this session. Persist in storage so it
   // survives within-site navigation (both the referrer and the URL params
   // disappear once you click around the partner site after landing).
-  let isTracked = cameFromPortal() || cameViaAffiliateLink();
+  // cameNow distinguishes "just clicked through" from "revisiting within the
+  // carried-over tracked window" so the banner can be honest about which one
+  // this is, rather than implying you just clicked through every time.
+  const cameNow = cameFromPortal() || cameViaAffiliateLink();
+  let isTracked = cameNow;
+  let trackedUntil = null;
   if (isTracked) {
-    await setStore({ [`tracked:${host}`]: Date.now() });
+    const now = Date.now();
+    await setStore({ [`tracked:${host}`]: now });
+    trackedUntil = now + TRACKED_TTL_MS;
   } else {
     const trackedStore = await getStore([`tracked:${host}`]);
     const trackedAt = trackedStore && trackedStore[`tracked:${host}`];
     isTracked = typeof trackedAt === "number" && Date.now() - trackedAt < TRACKED_TTL_MS;
+    if (isTracked) trackedUntil = trackedAt + TRACKED_TTL_MS;
   }
 
   // Best-effort enrichment: points + the tracked clickthrough URL.
@@ -151,9 +159,16 @@ async function checkAndRender() {
   });
 
   if (isTracked) {
-    // Green badge: telling the user they're being tracked.
+    // Green badge: telling the user they're being tracked. Wording depends
+    // on whether this page load is the actual click-through (cameNow) or a
+    // later revisit still inside the carried-over tracked window — saying
+    // "active!" on every revisit would misleadingly imply you just clicked
+    // through again.
     const statusEl = document.createElement("span");
-    statusEl.textContent = `✅ ${name}${points ? ` · ${points}` : ""} — EuroBonus tracking active!`;
+    const label = cameNow
+      ? "EuroBonus tracking active!"
+      : `EuroBonus tracked (until ${new Date(trackedUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})`;
+    statusEl.textContent = `✅ ${name}${points ? ` · ${points}` : ""} — ${label}`;
     Object.assign(statusEl.style, { color: "#fff", fontWeight: "600" });
     chip.append(statusEl);
   } else {
