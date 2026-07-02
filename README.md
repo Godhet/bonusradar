@@ -45,7 +45,8 @@ like `tduid`/`awc`/`at_gd` alongside an affiliate `utm_medium`), with
 2. **Load Temporary Add-on…** → pick the `.zip` (manifest is at the root)
 3. Open the extension's console (Inspect on this Firefox page) — you should see
    a line like `loaded shops — SE: 454, NO: 236, DK: 272; adlibris.com present: true`
-4. Visit `https://www.adlibris.com/sv` — the widget should appear top-right.
+4. Visit `https://www.adlibris.com/sv` — the widget should appear as a bar
+   across the top of the page.
 
 > Temporary add-ons vanish on restart. To make it permanent, sign it: submit
 > the zip to addons.mozilla.org as an **unlisted** add-on and self-install the
@@ -64,7 +65,8 @@ a userscript manager.
    Settings → Safari → Extensions.
 2. Open this link in Safari and tap **Install** when Userscripts prompts you:
    https://raw.githubusercontent.com/Godhet/bonusradar/main/userscript/bonusradar.user.js
-3. Visit a partner site — the widget should appear top-right.
+3. Visit a partner site — the widget should appear as a bar across the top
+   of the page.
 
 The userscript has no background page, so the shop list refreshes
 opportunistically (once a day, on whichever page you happen to be on) rather
@@ -96,3 +98,8 @@ EuroBonus.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Buy me a coffee?
+
+No pressure, but if this saved you some EuroBonus points and you're feeling
+generous: [ko-fi.com/socker](https://ko-fi.com/socker) ☕
