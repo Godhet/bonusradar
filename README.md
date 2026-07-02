@@ -1,9 +1,10 @@
 # Bonusradar
 
-A Firefox (MV3) extension that shows a small widget when the site you're on is
-a SAS EuroBonus shopping partner, with the points rate and a one-click link to
-shop via the portal so you actually earn them. Covers all three EuroBonus
-markets on LoyaltyKey's catalog: Sweden, Norway and Denmark.
+A browser extension (MV3, for **Firefox and Chrome**) that shows a small widget
+when the site you're on is a SAS EuroBonus shopping partner, with the points
+rate and a one-click link to shop via the portal so you actually earn them.
+Covers all three EuroBonus markets on LoyaltyKey's catalog: Sweden, Norway and
+Denmark. There's also an [iOS Safari userscript build](#ios-safari-userscript).
 
 ## How it works
 
@@ -42,7 +43,8 @@ like `tduid`/`awc`/`at_gd` alongside an affiliate `utm_medium`), with
 ## Load it in Firefox
 
 1. Go to `about:debugging#/runtime/this-firefox`
-2. **Load Temporary Add-on…** → pick the `.zip` (manifest is at the root)
+2. **Load Temporary Add-on…** → pick this folder's `manifest.json` (or run
+   `python3 build.py` and pick the resulting `.xpi`)
 3. Open the extension's console (Inspect on this Firefox page) — you should see
    a line like `loaded shops — SE: 454, NO: 236, DK: 272; adlibris.com present: true`
 4. Visit `https://www.adlibris.com/sv` — the widget should appear as a small
@@ -52,6 +54,22 @@ like `tduid`/`awc`/`at_gd` alongside an affiliate `utm_medium`), with
 > the zip to addons.mozilla.org as an **unlisted** add-on and self-install the
 > signed `.xpi`, or set `xpinstall.signatures.required` to `false` on Firefox
 > Developer/Nightly/ESR.
+
+## Load it in Chrome
+
+Chrome uses the same MV3 codebase; the only difference is the manifest (Chrome
+runs the background as a service worker, Firefox as an event page). Build the
+Chrome package and load it unpacked:
+
+1. Run `python3 build.py` — this writes `bonusradar-chrome-<version>.zip` (and
+   the Firefox `.xpi`) to the parent directory. Unzip it somewhere.
+2. Go to `chrome://extensions`, toggle **Developer mode** on (top-right).
+3. **Load unpacked** → pick the unzipped folder.
+4. Visit `https://www.adlibris.com/sv` — the widget should appear as a small
+   badge top-right.
+
+> Loading unpacked keeps it installed across restarts (unlike Firefox temporary
+> add-ons). To distribute it, submit the same `.zip` to the Chrome Web Store.
 
 ## iOS Safari (userscript)
 
@@ -86,6 +104,18 @@ anonymous.
 ```
 node test/match.test.js
 ```
+
+## Building
+
+```
+python3 build.py
+```
+
+No transpiler, minifier, or bundler — the packaged files are byte-for-byte the
+source in this repo. The only per-browser difference is which manifest is used
+(`manifest.json` for Firefox, `manifest.chrome.json` for Chrome); everything
+else is shared. `lib/compat.js` aliases `browser` → `chrome` so the same code
+runs in both.
 
 ## Notes & credit
 

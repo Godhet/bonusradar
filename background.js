@@ -1,3 +1,11 @@
+// In Chrome the background runs as a service worker, which loads a single
+// file — so it must pull in its dependencies itself. In Firefox the manifest
+// lists these in `background.scripts` and importScripts is undefined here, so
+// this is skipped. Must run before any browser.* / match-helper use below.
+if (typeof importScripts === "function") {
+  importScripts("lib/compat.js", "lib/match.js");
+}
+
 // ===================== CONFIG =====================
 const API_BASE = "https://onlineshopping.loyaltykey.com/api/browser-extension/sas";
 // EuroBonus covers Sweden, Norway and Denmark on LoyaltyKey's API. All three
@@ -137,7 +145,7 @@ browser.alarms.onAlarm.addListener((a) => {
   if (a.name === "bonusradar-refresh") refreshAll();
 });
 
-browser.runtime.onMessage.addListener(async (msg, sender) => {
+async function handleMessage(msg) {
   // Shop detail request from content script
   if (msg && msg.type === "eb-detail") {
     return await getDetail(msg.id, msg.country);
@@ -145,12 +153,25 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
 
   // Storage proxy: content scripts can't call storage.* directly
   if (msg && msg.type === "eb-storage-get") {
-    const result = await browser.storage.local.get(msg.keys);
-    return result;
+    return await browser.storage.local.get(msg.keys);
   }
 
   if (msg && msg.type === "eb-storage-set") {
     await browser.storage.local.set(msg.data);
     return true;
   }
+
+  return undefined;
+}
+
+// Return true + call sendResponse asynchronously. Firefox also accepts a
+// Promise returned directly from the listener, but Chrome does NOT — it drops
+// the value, leaving the sender's sendMessage promise unresolved. The
+// return-true + sendResponse pattern is the only one that works in both.
+browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  handleMessage(msg).then(sendResponse, (err) => {
+    console.warn("[Bonusradar] message handler failed", err);
+    sendResponse(null);
+  });
+  return true;
 });
