@@ -101,21 +101,13 @@ async function checkAndRender() {
   // Track whether we came via portal this session. Persist in storage so it
   // survives within-site navigation (both the referrer and the URL params
   // disappear once you click around the partner site after landing).
-  // cameNow distinguishes "just clicked through" from "revisiting within the
-  // carried-over tracked window" so the banner can be honest about which one
-  // this is, rather than implying you just clicked through every time.
-  const cameNow = cameFromPortal() || cameViaAffiliateLink();
-  let isTracked = cameNow;
-  let trackedUntil = null;
+  let isTracked = cameFromPortal() || cameViaAffiliateLink();
   if (isTracked) {
-    const now = Date.now();
-    await setStore({ [`tracked:${host}`]: now });
-    trackedUntil = now + TRACKED_TTL_MS;
+    await setStore({ [`tracked:${host}`]: Date.now() });
   } else {
     const trackedStore = await getStore([`tracked:${host}`]);
     const trackedAt = trackedStore && trackedStore[`tracked:${host}`];
     isTracked = typeof trackedAt === "number" && Date.now() - trackedAt < TRACKED_TTL_MS;
-    if (isTracked) trackedUntil = trackedAt + TRACKED_TTL_MS;
   }
 
   // Best-effort enrichment: points + the tracked clickthrough URL.
@@ -151,24 +143,17 @@ async function checkAndRender() {
   const chip = document.createElement("div");
   chip.id = "bonusradar-chip";
   Object.assign(chip.style, {
-    position: "fixed", top: "0", left: "0", right: "0", zIndex: "2147483647",
-    display: "flex", alignItems: "center", justifyContent: "center",
-    gap: "8px", background: bgColor, color: "#fff", padding: "10px 44px",
-    font: "14px/1.4 system-ui, -apple-system, sans-serif", textAlign: "center",
-    boxShadow: "0 2px 12px rgba(0,0,0,.3)", borderBottom: `1px solid ${borderColor}`,
+    position: "fixed", top: "12px", right: "12px", zIndex: "2147483647",
+    display: "flex", alignItems: "center", gap: "8px",
+    background: bgColor, color: "#fff", padding: "8px 10px 8px 12px",
+    borderRadius: "10px", font: "13px/1.3 system-ui, -apple-system, sans-serif",
+    boxShadow: "0 4px 16px rgba(0,0,0,.35)", border: `1px solid ${borderColor}`,
   });
 
   if (isTracked) {
-    // Green badge: telling the user they're being tracked. Wording depends
-    // on whether this page load is the actual click-through (cameNow) or a
-    // later revisit still inside the carried-over tracked window — saying
-    // "active!" on every revisit would misleadingly imply you just clicked
-    // through again.
+    // Green badge: telling the user they're being tracked.
     const statusEl = document.createElement("span");
-    const label = cameNow
-      ? "EuroBonus tracking active!"
-      : `EuroBonus tracked (until ${new Date(trackedUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})`;
-    statusEl.textContent = `✅ ${name}${points ? ` · ${points}` : ""} — ${label}`;
+    statusEl.textContent = `✅ ${name}${points ? ` · ${points}` : ""} — EuroBonus tracking active!`;
     Object.assign(statusEl.style, { color: "#fff", fontWeight: "600" });
     chip.append(statusEl);
   } else {
@@ -200,9 +185,8 @@ async function checkAndRender() {
   close.textContent = "✕";
   close.title = "Hide on this site";
   Object.assign(close.style, {
-    position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)",
     background: "transparent", color: isTracked ? "#a3e4b6" : "#aab4ee", border: "0",
-    cursor: "pointer", font: "16px system-ui", padding: "4px", lineHeight: "1",
+    cursor: "pointer", font: "13px system-ui", padding: "0 2px", lineHeight: "1",
   });
   close.addEventListener("click", async () => {
     const hiddenStore = await getStore(["hidden"]);
