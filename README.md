@@ -99,11 +99,17 @@ code shown on the left side of the banner.
 
 ## Privacy
 
-Matching happens locally against the cached index. The extension talks to
-LoyaltyKey only (a) once a day for the three market catalogs and (b) for a
-single shop's detail when you land on a partner site — never the full list of
-sites you visit. Detail requests are sent without credentials, so they're
-anonymous.
+Matching happens locally against the cached index — the list of sites you visit
+is never sent anywhere. The extension makes network requests to:
+
+- **LoyaltyKey**, (a) once a day for the three market catalogs and (b) for a
+  single shop's detail when you land on a partner site. Sent without
+  credentials, so they're anonymous.
+- **A handful of affiliate-network domains** (TradeDoubler, Awin, Adtraction,
+  Partner-ads, Adservice), once a day, as a `no-cors` "bait" request to detect
+  whether an ad/content blocker would break bonus tracking. These carry no
+  data and nothing is read from the response — only whether the request was
+  allowed out.
 
 ## Tests
 

@@ -123,7 +123,10 @@ async function checkAndRender() {
         ? `${detail.points} pts`
         : `${detail.points} pts / 100 kr`
       : "";
-  const href = (detail && detail.url) || PORTAL_HOME;
+  // Only accept an https clickthrough from the API; fall back to the portal
+  // home otherwise. Guards against a javascript:/data: URL ever reaching href.
+  const rawUrl = (detail && detail.url) || "";
+  const href = /^https:\/\//i.test(rawUrl) ? rawUrl : PORTAL_HOME;
 
   // Appearance depends on whether we're in a tracked session.
   const bgColor = isTracked ? "#136e2b" : "#2f6fed";

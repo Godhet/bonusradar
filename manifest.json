@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bonusradar",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Flags SAS EuroBonus partner shops in Sweden, Norway and Denmark as you browse, so you can shop via the portal and actually earn points.",
   "browser_specific_settings": {
     "gecko": {

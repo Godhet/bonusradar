@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bonusradar
 // @namespace    https://github.com/Godhet/bonusradar
-// @version      0.3.4
+// @version      0.4.1
 // @description  Flags SAS EuroBonus partner shops in Sweden, Norway and Denmark as you browse, with a link to shop via the portal so you actually earn points.
 // @author       Marcus Palmqvist
 // @match        http://*/*
@@ -169,9 +169,11 @@
     "awin1.com",
     "dwin1.com",
     "adtraction.com",
-    "partnerads.no",
+    "partner-ads.com",
     "adservice.com",
   ];
+  // Control host nothing would block; lets us tell "blocked" from "offline".
+  const CONTROL_HOST = "onlineshopping.loyaltykey.com";
   const COUNTRY_NAMES = { SE: "Sweden", NO: "Norway", DK: "Denmark" };
 
   // ---- Shop list + index (mirrors background.js's refresh(), run inline) ----
@@ -238,7 +240,10 @@
 
   // ---- Ad-blocker bait check (mirrors background.js's checkAdblock()) ----
 
-  async function probeHost(host) {
+  // Returns true if the request couldn't go out (blocked, unreachable, or timed
+  // out) — a no-cors fetch can't distinguish those, so ensureAdblockStatus()
+  // uses a control host + majority threshold rather than trusting one probe.
+  async function probeBlocked(host) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), BAIT_TIMEOUT_MS);
     try {
@@ -249,8 +254,8 @@
         signal: controller.signal,
       });
       return false;
-    } catch (e) {
-      return e.name !== "AbortError";
+    } catch (_) {
+      return true;
     } finally {
       clearTimeout(timer);
     }
@@ -261,8 +266,14 @@
     if (Date.now() - checkedAt < ADBLOCK_TTL_MS) {
       return await storeGet("adblockActive", false);
     }
-    const results = await Promise.all(AD_NETWORK_HOSTS.map(probeHost));
-    const adblockActive = results.some(Boolean);
+    // Can't reach a host nothing would block -> offline -> inconclusive; keep
+    // the last known value rather than false-warning.
+    if (await probeBlocked(CONTROL_HOST)) {
+      return await storeGet("adblockActive", false);
+    }
+    const results = await Promise.all(AD_NETWORK_HOSTS.map(probeBlocked));
+    const blocked = results.filter(Boolean).length;
+    const adblockActive = blocked >= Math.ceil(AD_NETWORK_HOSTS.length / 2);
     await storeSet("adblockActive", adblockActive);
     await storeSet("adblockCheckedAt", Date.now());
     return adblockActive;
@@ -378,7 +389,10 @@
           ? `${detail.points} pts`
           : `${detail.points} pts / 100 kr`
         : "";
-    const href = (detail && detail.url) || PORTAL_HOME;
+    // Only accept an https clickthrough from the API; guards against a
+    // javascript:/data: URL ever reaching href.
+    const rawUrl = (detail && detail.url) || "";
+    const href = /^https:\/\//i.test(rawUrl) ? rawUrl : PORTAL_HOME;
 
     const bgColor = isTracked ? "#136e2b" : "#2f6fed";
     const borderColor = isTracked ? "#1e9e3d" : "#6ea1f7";
